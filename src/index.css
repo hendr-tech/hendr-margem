@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@theme {
+  --font-headline: "Manrope", sans-serif;
+  --font-body: "Inter", sans-serif;
+
+  --color-background: #F5F5F5;
+  --color-on-surface: #2D3338;
+  --color-on-surface-variant: #555D63;
+  --color-primary: #333333;
+  --color-secondary: #FFE600;
+  --color-secondary-dark: #9E8E00;
+  --color-secondary-container: #FFF9C4;
+  --color-on-secondary-container: #333333;
+  --color-tertiary-container: #00A650;
+  --color-on-tertiary-container: #ffffff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #F3F3F3;
+  --color-surface-container: #E8E8E8;
+  --color-surface-container-high: #E0E0E0;
+  --color-surface-container-highest: #CCCCCC;
+  --color-outline-variant: #acb3b8;
+  --color-error: #9f403d;
+  --color-error-container: #fe8983;
+
+  --radius-xl: 0.5rem;
+  --radius-full: 9999px;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-on-surface font-body antialiased;
+  }
+  h1, h2, h3, h4 {
+    @apply font-headline;
+  }
+  /* Prevent number input spinners */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
