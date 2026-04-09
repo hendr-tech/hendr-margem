@@ -197,7 +197,33 @@ export const calculatePricing = (input: PricingInput): PricingResult => {
   }
 
   // ═══════════════════════════════════════════
-  // FEEDBACK INTELIGENTE (3 NÍVEIS)
+  // ANÁLISE DE COMPETITIVIDADE (antes do feedback, para influenciar veredito)
+  // ═══════════════════════════════════════════
+  let comp_status: 'excellent' | 'good' | 'warning' | 'danger' = 'good';
+  let comp_suggestion = '';
+  const price_diff = competitor_price > 0 ? ((final_price - competitor_price) / competitor_price) * 100 : 0;
+
+  if (competitor_price > 0) {
+    if (competitor_price <= cost) {
+      comp_status = 'danger';
+      comp_suggestion = `🚨 ALERTA CRÍTICO: O concorrente vende a R$ ${fmt(competitor_price)}, que é MENOR que seu custo de R$ ${fmt(cost)}. É praticamente impossível competir nesse preço. Você precisa de um fornecedor com custo abaixo de R$ ${fmt(competitor_price * 0.5)} para ter chance, ou buscar um diferencial que justifique o preço maior (kit, brindes, garantia estendida).`;
+    } else if (final_price <= competitor_price * 0.95) {
+      comp_status = 'excellent';
+      comp_suggestion = 'Preço excelente! Você tem margem competitiva para dominar esse nicho.';
+    } else if (final_price <= competitor_price * 1.05) {
+      comp_status = 'good';
+      comp_suggestion = 'Preço competitivo. Foque na qualidade do anúncio e velocidade de entrega.';
+    } else if (final_price <= competitor_price * 1.15) {
+      comp_status = 'warning';
+      comp_suggestion = 'Preço um pouco acima. Considere negociar com fornecedor ou reduzir margem.';
+    } else {
+      comp_status = 'danger';
+      comp_suggestion = `Preço ${((final_price / competitor_price - 1) * 100).toFixed(0)}% acima do concorrente. Muito difícil vender nesse valor. Revise custos ou considere outro fornecedor.`;
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  // FEEDBACK INTELIGENTE (3 NÍVEIS + COMPETITIVIDADE)
   // ═══════════════════════════════════════════
 
   const feedback = generateFeedback({
@@ -214,34 +240,9 @@ export const calculatePricing = (input: PricingInput): PricingResult => {
     shipping_method,
     is_impossible,
     mode,
+    competitor_price,
+    comp_status,
   });
-
-  // ═══════════════════════════════════════════
-  // ANÁLISE DE COMPETITIVIDADE
-  // ═══════════════════════════════════════════
-  let status: 'excellent' | 'good' | 'warning' | 'danger' = 'good';
-  let suggestion = '';
-  const price_diff = competitor_price > 0 ? ((final_price - competitor_price) / competitor_price) * 100 : 0;
-
-  if (competitor_price > 0) {
-    // Caso crítico: concorrente vende por MENOS que seu custo
-    if (competitor_price <= cost) {
-      status = 'danger';
-      suggestion = `🚨 ALERTA CRÍTICO: O concorrente vende a R$ ${fmt(competitor_price)}, que é MENOR que seu custo de R$ ${fmt(cost)}. É praticamente impossível competir nesse preço. Você precisa de um fornecedor com custo abaixo de R$ ${fmt(competitor_price * 0.5)} para ter chance, ou buscar um diferencial que justifique o preço maior (kit, brindes, garantia estendida).`;
-    } else if (final_price <= competitor_price * 0.95) {
-      status = 'excellent';
-      suggestion = 'Preço excelente! Você tem margem competitiva para dominar esse nicho.';
-    } else if (final_price <= competitor_price * 1.05) {
-      status = 'good';
-      suggestion = 'Preço competitivo. Foque na qualidade do anúncio e velocidade de entrega.';
-    } else if (final_price <= competitor_price * 1.15) {
-      status = 'warning';
-      suggestion = 'Preço um pouco acima. Considere negociar com fornecedor ou reduzir margem.';
-    } else {
-      status = 'danger';
-      suggestion = `Preço ${((final_price / competitor_price - 1) * 100).toFixed(0)}% acima do concorrente. Muito difícil vender nesse valor. Revise custos ou considere outro fornecedor.`;
-    }
-  }
 
   return {
     final_price,
@@ -266,8 +267,8 @@ export const calculatePricing = (input: PricingInput): PricingResult => {
     competitiveness: {
       is_competitive: final_price <= competitor_price * 1.05 || competitor_price === 0,
       price_diff,
-      suggestion,
-      status,
+      suggestion: comp_suggestion,
+      status: comp_status,
     },
   };
 };
@@ -290,6 +291,8 @@ interface FeedbackParams {
   shipping_method: ShippingMethod;
   is_impossible: boolean;
   mode: 'suggestion' | 'simulation';
+  competitor_price: number;
+  comp_status: 'excellent' | 'good' | 'warning' | 'danger';
 }
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -299,6 +302,7 @@ function generateFeedback(params: FeedbackParams): FeedbackResult {
     net_profit, margin_percentage, margin_target, cost, packaging_cost,
     final_price, commission_rate, effective_tax_rate, ads_rate,
     weight, shipping_method, is_impossible, mode,
+    competitor_price, comp_status,
   } = params;
 
   const margin_target_pct = margin_target * 100;
@@ -353,11 +357,36 @@ function generateFeedback(params: FeedbackParams): FeedbackResult {
     };
   }
 
-  // ─── VALE A PENA ✅ ──────────────────────────────────
+  // ─── VALE A PENA ✅ (verificar competitividade) ──────
+
+  // Se concorrente vende ABAIXO do seu custo → rebaixar para "marginal"
+  if (competitor_price > 0 && competitor_price <= cost) {
+    return {
+      verdict: 'marginal',
+      title: 'Lucrativo, mas Inviável ⚠️',
+      message: `Matematicamente o produto dá lucro de R$ ${fmt(net_profit)}/un (${margin_percentage.toFixed(1)}% de margem). MAS o concorrente vende a R$ ${fmt(competitor_price)}, que é menor que seu custo de R$ ${fmt(cost)}. Seu preço de R$ ${fmt(final_price)} ficaria ${((final_price / competitor_price - 1) * 100).toFixed(0)}% acima. É quase impossível vender assim. Busque um fornecedor com custo abaixo de R$ ${fmt(competitor_price * 0.5)} ou crie um diferencial (kit, brinde, garantia).`,
+      max_cost_for_target: Math.max(0, max_cost),
+      ideal_cost_range: { min: 0, max: Math.max(0, competitor_price * 0.5) },
+    };
+  }
+
+  // Se preço muito acima do concorrente (>15%) → rebaixar para "marginal"
+  if (competitor_price > 0 && comp_status === 'danger') {
+    return {
+      verdict: 'marginal',
+      title: 'Lucrativo, mas Caro ⚠️',
+      message: `Margem de ${margin_percentage.toFixed(1)}% atingida (R$ ${fmt(net_profit)}/un), porém seu preço de R$ ${fmt(final_price)} está ${((final_price / competitor_price - 1) * 100).toFixed(0)}% acima do concorrente (R$ ${fmt(competitor_price)}). Vai ser difícil vender. Tente negociar o custo ou reduzir a margem para se aproximar do concorrente.`,
+      max_cost_for_target: Math.max(0, max_cost),
+      ideal_cost_range: null,
+    };
+  }
+
   return {
     verdict: 'worth_it',
     title: 'Vale a Pena! ✅',
-    message: `Margem de ${margin_percentage.toFixed(1)}% atingida! Lucro de R$ ${fmt(net_profit)} por unidade com ROI de ${((net_profit / (cost + packaging_cost)) * 100).toFixed(0)}%. Operação saudável.`,
+    message: competitor_price > 0 && comp_status === 'excellent'
+      ? `Margem de ${margin_percentage.toFixed(1)}% atingida! Lucro de R$ ${fmt(net_profit)}/un com ROI de ${((net_profit / (cost + packaging_cost)) * 100).toFixed(0)}%. E o melhor: seu preço está ABAIXO do concorrente. Operação excelente!`
+      : `Margem de ${margin_percentage.toFixed(1)}% atingida! Lucro de R$ ${fmt(net_profit)} por unidade com ROI de ${((net_profit / (cost + packaging_cost)) * 100).toFixed(0)}%. Operação saudável.`,
     max_cost_for_target: Math.max(0, max_cost),
     ideal_cost_range: null,
   };
