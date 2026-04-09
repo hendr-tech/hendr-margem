@@ -335,7 +335,7 @@ function generateFeedback(params: FeedbackParams): FeedbackResult {
     };
   }
 
-  if (margin_percentage < margin_target_pct) {
+  if (margin_percentage < margin_target_pct - 0.1) {
     // ─── PODE MELHORAR (lucro positivo mas abaixo da meta) ─
     const ideal_min = max_cost * 0.85; // faixa confortável
     const ideal_max = max_cost;
