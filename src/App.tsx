@@ -29,9 +29,12 @@ import {
   Zap,
   X,
   LogOut,
+  RotateCcw,
+  Eye,
+  Rocket,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ML_CONFIG, AdTypeKey, ShippingMethod } from './config/mlConfig';
+import { ML_CONFIG, AdTypeKey, ShippingMethod, TaxRegime } from './config/mlConfig';
 import { calculatePricing, PricingInput, PricingResult } from './lib/pricingLogic';
 import {
   supabase,
@@ -96,8 +99,18 @@ const InputField = ({
 // ─── Result Card ─────────────────────────────────────────
 
 const ResultCard = ({ result, onSave, saving }: { result: PricingResult; onSave: () => void; saving: boolean }) => {
+  const { feedback } = result;
   const isProfit = result.net_profit > 0;
-  const worthIt = isProfit && result.roi > 10;
+
+  // Color schemes for 3 feedback levels + impossible
+  const schemes = {
+    worth_it: { bg: 'bg-gradient-to-br from-green-50 to-emerald-50', border: 'border-green-200', icon: CheckCircle2, iconBg: 'bg-green-500 shadow-green-500/30', titleColor: 'text-green-700' },
+    marginal: { bg: 'bg-gradient-to-br from-amber-50 to-yellow-50', border: 'border-amber-200', icon: AlertCircle, iconBg: 'bg-amber-500 shadow-amber-500/30', titleColor: 'text-amber-700' },
+    not_worth_it: { bg: 'bg-gradient-to-br from-red-50 to-orange-50', border: 'border-red-200', icon: AlertCircle, iconBg: 'bg-red-500 shadow-red-500/30', titleColor: 'text-red-700' },
+    impossible: { bg: 'bg-gradient-to-br from-red-50 to-rose-50', border: 'border-red-300', icon: X, iconBg: 'bg-red-600 shadow-red-600/30', titleColor: 'text-red-800' },
+  };
+  const scheme = schemes[feedback.verdict];
+  const VerdictIcon = scheme.icon;
 
   return (
     <motion.div
@@ -107,41 +120,32 @@ const ResultCard = ({ result, onSave, saving }: { result: PricingResult; onSave:
       className="space-y-5"
     >
       {/* Main Verdict */}
-      <div className={`rounded-3xl p-6 border-2 ${worthIt
-          ? 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-200'
-          : 'bg-gradient-to-br from-red-50 to-orange-50 border-red-200'
-        }`}
-      >
-        <div className="flex items-center gap-3 mb-4">
-          {worthIt ? (
-            <div className="w-10 h-10 bg-green-500 rounded-2xl flex items-center justify-center shadow-lg shadow-green-500/30">
-              <CheckCircle2 className="w-5 h-5 text-white" />
-            </div>
-          ) : (
-            <div className="w-10 h-10 bg-red-500 rounded-2xl flex items-center justify-center shadow-lg shadow-red-500/30">
-              <AlertCircle className="w-5 h-5 text-white" />
-            </div>
-          )}
+      <div className={`rounded-3xl p-6 border-2 ${scheme.bg} ${scheme.border}`}>
+        <div className="flex items-center gap-3 mb-3">
+          <div className={`w-10 h-10 ${scheme.iconBg} rounded-2xl flex items-center justify-center shadow-lg`}>
+            <VerdictIcon className="w-5 h-5 text-white" />
+          </div>
           <div>
-            <p className={`text-lg font-black ${worthIt ? 'text-green-700' : 'text-red-700'}`}>
-              {worthIt ? 'Vale a Pena! ✅' : 'Não Compensa ❌'}
-            </p>
+            <p className={`text-lg font-black ${scheme.titleColor}`}>{feedback.title}</p>
             <p className="text-xs text-on-surface-variant">
               {result.mode === 'simulation' ? 'Simulação de preço' : 'Preço sugerido pela calculadora'}
             </p>
           </div>
         </div>
+        <p className="text-xs text-on-surface leading-relaxed font-medium">{feedback.message}</p>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-white/70 p-3.5 rounded-2xl">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60">Preço de Venda</p>
-            <p className="text-xl font-black text-on-surface mt-0.5">R$ {fmt(result.final_price)}</p>
+        {feedback.verdict !== 'impossible' && (
+          <div className="grid grid-cols-2 gap-3 mt-4">
+            <div className="bg-white/70 p-3.5 rounded-2xl">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60">Preço de Venda</p>
+              <p className="text-xl font-black text-on-surface mt-0.5">R$ {fmt(result.final_price)}</p>
+            </div>
+            <div className="bg-white/70 p-3.5 rounded-2xl">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60">Você Recebe (Líquido)</p>
+              <p className="text-xl font-black text-secondary-dark mt-0.5">R$ {fmt(result.liquido_ml)}</p>
+            </div>
           </div>
-          <div className="bg-white/70 p-3.5 rounded-2xl">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60">Você Recebe (Líquido)</p>
-            <p className="text-xl font-black text-secondary-dark mt-0.5">R$ {fmt(result.liquido_ml)}</p>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Key Metrics */}
@@ -274,13 +278,15 @@ const CostRow = ({ label, value, pct }: { label: string; value: number; pct?: st
 
 // ─── Product List Item ───────────────────────────────────
 
-const ProductItem = ({ product, onDelete }: { product: SavedProduct; onDelete: (id: string) => void }) => (
+function ProductItem({ product, onDelete, onOpen }: { product: SavedProduct; onDelete: (id: string) => void; onOpen: (p: SavedProduct) => void }) {
+  return (
   <motion.div
     layout
     initial={{ opacity: 0, y: 10 }}
     animate={{ opacity: 1, y: 0 }}
     exit={{ opacity: 0, x: -100 }}
-    className="bg-surface-container-lowest p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between group hover:shadow-md transition-all"
+    onClick={() => onOpen(product)}
+    className="bg-surface-container-lowest p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between group hover:shadow-md transition-all cursor-pointer"
   >
     <div className="flex-1 min-w-0">
       <div className="flex items-center gap-2 mb-1">
@@ -299,13 +305,155 @@ const ProductItem = ({ product, onDelete }: { product: SavedProduct; onDelete: (
         <span className="text-on-surface-variant/40">ROI: {Number(product.roi).toFixed(0)}%</span>
       </div>
     </div>
-    <button
-      onClick={() => onDelete(product.id)}
-      className="p-2 rounded-xl text-on-surface-variant/30 hover:bg-red-50 hover:text-red-500 transition-all ml-2 opacity-0 group-hover:opacity-100"
-    >
-      <Trash2 className="w-4 h-4" />
-    </button>
+    <div className="flex items-center gap-1 ml-2">
+      <span className="p-2 rounded-xl text-on-surface-variant/30 group-hover:text-secondary-dark transition-all opacity-0 group-hover:opacity-100">
+        <Eye className="w-4 h-4" />
+      </span>
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(product.id); }}
+        className="p-2 rounded-xl text-on-surface-variant/30 hover:bg-red-50 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+      >
+        <Trash2 className="w-4 h-4" />
+      </button>
+    </div>
   </motion.div>
+  );
+}
+
+// ─── Product Detail Modal ────────────────────────────────
+
+const ProductDetailModal = ({ product, onClose }: { product: SavedProduct; onClose: () => void }) => {
+  // Recalculate full pricing from saved data
+  const recalculated = useMemo(() => calculatePricing({
+    name: product.name,
+    cost: product.cost,
+    weight: product.weight,
+    packaging_cost: product.packaging_cost,
+    tax_rate: product.tax_rate,
+    tax_regime: (product.tax_regime as TaxRegime) || 'SIMPLES',
+    ads_rate: product.ads_rate,
+    margin_target: product.margin_target,
+    ad_type: product.ad_type as AdTypeKey,
+    shipping_method: product.shipping_method as ShippingMethod,
+    competitor_price: product.competitor_price,
+    manual_price: product.manual_price || 0,
+    monthly_goal: product.monthly_goal || 0,
+  }), [product]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ y: 100, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 100, opacity: 0 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-background w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-6 space-y-5"
+      >
+        {/* Header */}
+        <div className="flex justify-between items-start">
+          <div>
+            <h3 className="text-xl font-black text-on-surface">{product.name}</h3>
+            <p className="text-[10px] text-on-surface-variant mt-0.5">
+              Salvo em {new Date(product.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-surface-container-high transition-all">
+            <X className="w-5 h-5 text-on-surface-variant" />
+          </button>
+        </div>
+
+        {/* Verdict */}
+        <div className={`rounded-2xl p-4 border ${
+          recalculated.feedback.verdict === 'worth_it' ? 'bg-green-50 border-green-200' :
+          recalculated.feedback.verdict === 'marginal' ? 'bg-amber-50 border-amber-200' :
+          'bg-red-50 border-red-200'
+        }`}>
+          <p className={`text-sm font-black ${
+            recalculated.feedback.verdict === 'worth_it' ? 'text-green-700' :
+            recalculated.feedback.verdict === 'marginal' ? 'text-amber-700' : 'text-red-700'
+          }`}>{recalculated.feedback.title}</p>
+          <p className="text-[11px] text-on-surface mt-1 leading-relaxed">{recalculated.feedback.message}</p>
+        </div>
+
+        {/* Input Data */}
+        <div className="bg-surface-container-lowest rounded-2xl p-4 border border-slate-100 space-y-2.5">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/50">Dados de Entrada</p>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <DetailRow label="Custo (fornecedor)" value={`R$ ${fmt(product.cost)}`} />
+            <DetailRow label="Peso c/ embalagem" value={`${product.weight} kg`} />
+            <DetailRow label="Embalagem" value={`R$ ${fmt(product.packaging_cost)}`} />
+            <DetailRow label="Tipo Anúncio" value={product.ad_type === 'PREMIUM' ? 'Premium 16%' : 'Clássico 11%'} />
+            <DetailRow label="Envio" value={product.shipping_method === 'FULL' ? 'Full/Super' : 'Coleta'} />
+            <DetailRow label="Imposto" value={`${(product.tax_rate * 100).toFixed(1)}%`} />
+            <DetailRow label="Margem Desejada" value={`${(product.margin_target * 100).toFixed(0)}%`} />
+            {product.ads_rate > 0 && <DetailRow label="Ads" value={`${(product.ads_rate * 100).toFixed(1)}%`} />}
+          </div>
+        </div>
+
+        {/* Key Metrics */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-surface-container-lowest p-3.5 rounded-2xl border border-slate-100">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60">Preço de Venda</p>
+            <p className="text-lg font-black text-on-surface mt-0.5">R$ {fmt(recalculated.final_price)}</p>
+          </div>
+          <div className="bg-surface-container-lowest p-3.5 rounded-2xl border border-slate-100">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60">Líquido ML</p>
+            <p className="text-lg font-black text-secondary-dark mt-0.5">R$ {fmt(recalculated.liquido_ml)}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2.5">
+          <div className="bg-surface-container-lowest p-3 rounded-2xl border border-slate-100">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60">Lucro Real</p>
+            <p className={`text-base font-black mt-0.5 ${recalculated.net_profit > 0 ? 'text-green-600' : 'text-red-500'}`}>R$ {fmt(recalculated.net_profit)}</p>
+          </div>
+          <div className="bg-surface-container-lowest p-3 rounded-2xl border border-slate-100">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60">Margem</p>
+            <p className={`text-base font-black mt-0.5 ${recalculated.net_profit > 0 ? 'text-green-600' : 'text-red-500'}`}>{recalculated.margin_percentage.toFixed(1)}%</p>
+          </div>
+          <div className="bg-surface-container-lowest p-3 rounded-2xl border border-slate-100">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60">ROI</p>
+            <p className={`text-base font-black mt-0.5 ${recalculated.net_profit > 0 ? 'text-green-600' : 'text-red-500'}`}>{recalculated.roi.toFixed(1)}%</p>
+          </div>
+        </div>
+
+        {/* Cost Breakdown */}
+        <div className="bg-surface-container-lowest rounded-2xl p-4 border border-slate-100 space-y-2.5">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/50">Detalhamento dos Custos</p>
+          <div className="space-y-2">
+            <CostRow label="Comissão ML" value={recalculated.commission_amount} pct={`${(recalculated.commission_rate * 100).toFixed(0)}%`} />
+            <CostRow label="Frete (vendedor)" value={recalculated.shipping_cost} />
+            {recalculated.fixed_fee > 0 && <CostRow label="Taxa Fixa (< R$ 79)" value={recalculated.fixed_fee} />}
+            <CostRow label="Custo do Produto" value={recalculated.cost} />
+            <CostRow label="Embalagem" value={recalculated.packaging_cost} />
+            <CostRow label="Impostos" value={recalculated.tax_amount} />
+            {recalculated.ads_amount > 0 && <CostRow label="Mercado Ads" value={recalculated.ads_amount} />}
+            <div className="border-t border-slate-200 pt-2 flex justify-between">
+              <span className="text-xs font-black text-on-surface">Total de Custos</span>
+              <span className="text-xs font-black text-on-surface">R$ {fmt(recalculated.total_deductions)}</span>
+            </div>
+          </div>
+        </div>
+
+        <button onClick={onClose} className="w-full py-3 bg-surface-container-high rounded-2xl text-sm font-bold text-on-surface-variant hover:bg-surface-container-highest transition-all">
+          Fechar
+        </button>
+      </motion.div>
+    </motion.div>
+  );
+};
+
+const DetailRow = ({ label, value }: { label: string; value: string }) => (
+  <div className="flex justify-between items-center bg-surface-container-low/50 px-2.5 py-1.5 rounded-lg">
+    <span className="text-on-surface-variant text-[10px]">{label}</span>
+    <span className="font-bold text-on-surface text-[11px]">{value}</span>
+  </div>
 );
 
 // ─── Como Usar (Guide) Tab ──────────────────────────────
@@ -469,22 +617,26 @@ export default function App() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [calcMode, setCalcMode] = useState<'suggestion' | 'simulation'>('suggestion');
+  const [selectedProduct, setSelectedProduct] = useState<SavedProduct | null>(null);
 
-  // Form State — minimal required fields
-  const [formData, setFormData] = useState<PricingInput>({
+  // Default form state
+  const defaultForm: PricingInput = {
     name: '',
     cost: 0,
     weight: 0.5,
     packaging_cost: ML_CONFIG.DEFAULTS.PACKAGING_COST,
     tax_rate: ML_CONFIG.DEFAULTS.TAX_RATE,
+    tax_regime: 'SIMPLES',
     ads_rate: ML_CONFIG.DEFAULTS.ADS_RATE,
     margin_target: ML_CONFIG.DEFAULTS.MARGIN_TARGET,
     ad_type: 'CLASSIC',
     shipping_method: 'COLETA',
     competitor_price: 0,
     manual_price: 0,
-    monthly_goal: 5000,
-  });
+    monthly_goal: 3000,
+  };
+
+  const [formData, setFormData] = useState<PricingInput>(defaultForm);
 
   const updateForm = useCallback((patch: Partial<PricingInput>) => {
     setFormData(prev => ({ ...prev, ...patch }));
@@ -522,7 +674,7 @@ export default function App() {
     premium: calculatePricing({ ...formData, ad_type: 'PREMIUM' }),
   }), [formData]);
 
-  // Save product to Supabase
+  // Save product to Supabase (fields persist after save)
   const handleSave = useCallback(async () => {
     if (!formData.name.trim()) {
       alert('Digite o nome do produto.');
@@ -538,6 +690,7 @@ export default function App() {
         shipping_method: formData.shipping_method,
         packaging_cost: formData.packaging_cost,
         tax_rate: formData.tax_rate,
+        tax_regime: formData.tax_regime,
         ads_rate: formData.ads_rate,
         margin_target: formData.margin_target,
         competitor_price: formData.competitor_price,
@@ -547,11 +700,10 @@ export default function App() {
         net_profit: result.net_profit,
         roi: result.roi,
         liquido_ml: result.liquido_ml,
-        is_worth_it: result.net_profit > 0 && result.roi > 10,
+        is_worth_it: result.feedback.verdict === 'worth_it',
       });
       setProducts(prev => [newProduct, ...prev]);
-      setShowResult(false);
-      updateForm({ name: '', cost: 0, manual_price: 0, competitor_price: 0 });
+      // Fields persist — don't reset!
       setActiveTab('list');
     } catch (err) {
       console.error('Erro ao salvar:', err);
@@ -560,6 +712,13 @@ export default function App() {
       setSaving(false);
     }
   }, [formData, result, updateForm]);
+
+  // Reset form to defaults
+  const handleReset = useCallback(() => {
+    setFormData(defaultForm);
+    setShowResult(false);
+    setCalcMode('suggestion');
+  }, []);
 
   // Delete product from Supabase
   const handleDelete = useCallback(async (id: string) => {
@@ -639,12 +798,20 @@ export default function App() {
               exit={{ opacity: 0, x: 20 }}
               className="space-y-5"
             >
-              {/* Title + Mode Toggle */}
+              {/* Title + Reset */}
               <div className="flex justify-between items-end">
                 <div>
                   <h2 className="text-2xl font-black tracking-tight text-on-surface">Calculadora</h2>
                   <p className="text-on-surface-variant text-xs">Descubra se vale a pena vender.</p>
                 </div>
+                <button
+                  onClick={handleReset}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold text-on-surface-variant/50 hover:text-red-500 hover:bg-red-50 transition-all"
+                  title="Resetar campos"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Limpar
+                </button>
               </div>
 
               {/* Mode Toggle */}
@@ -811,6 +978,44 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Tax Regime Selector */}
+              <div className="bg-surface-container-lowest rounded-3xl p-5 shadow-sm border border-slate-100 space-y-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-on-surface-variant/60 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3 h-3 text-secondary-dark" /> Regime Tributário
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['CPF_MEI', 'SIMPLES'] as TaxRegime[]).map((regime) => {
+                    const cfg = ML_CONFIG.TAX_REGIMES[regime];
+                    const isSelected = formData.tax_regime === regime;
+                    return (
+                      <button
+                        key={regime}
+                        onClick={() => updateForm({ tax_regime: regime, tax_rate: cfg.rate })}
+                        className={`p-3 rounded-xl text-left transition-all border ${
+                          isSelected ? 'bg-secondary/15 border-secondary' : 'bg-surface-container-low border-transparent'
+                        }`}
+                      >
+                        <p className={`text-xs font-bold ${isSelected ? 'text-on-surface' : 'text-on-surface-variant'}`}>{cfg.label}</p>
+                        <p className="text-[9px] text-on-surface-variant/50 mt-0.5">
+                          {regime === 'CPF_MEI' ? 'Imposto 0%' : `Alíquota editável`}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+                {formData.tax_regime === 'SIMPLES' && (
+                  <InputField
+                    label="Alíquota do Simples"
+                    suffix="%"
+                    icon={Percent}
+                    value={formData.tax_rate * 100 || ''}
+                    onChange={(val) => updateForm({ tax_rate: val / 100 })}
+                    tooltip="Digite sua faixa do Simples Nacional (ex: 4%, 6%, 8%)."
+                    placeholder="6"
+                  />
+                )}
+              </div>
+
               {/* Advanced Settings (Collapsible) */}
               <button
                 onClick={() => setShowAdvanced(!showAdvanced)}
@@ -831,34 +1036,18 @@ export default function App() {
                     <div className="bg-surface-container-lowest rounded-3xl p-5 shadow-sm border border-slate-100 space-y-4">
                       <div className="grid grid-cols-2 gap-3">
                         <InputField
-                          label="Imposto"
-                          suffix="%"
-                          value={formData.tax_rate * 100}
-                          onChange={(val) => updateForm({ tax_rate: val / 100 })}
-                          tooltip="Sua alíquota (Simples Nacional padrão: 6,5%)."
-                        />
-                        <InputField
                           label="Embalagem"
                           prefix="R$"
                           value={formData.packaging_cost}
                           onChange={(val) => updateForm({ packaging_cost: val })}
                           tooltip="Caixa, fita, plástico bolha."
                         />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
                         <InputField
                           label="Mercado Ads"
                           suffix="%"
                           value={formData.ads_rate * 100}
                           onChange={(val) => updateForm({ ads_rate: val / 100 })}
                           tooltip="Investimento em publicidade no ML."
-                        />
-                        <InputField
-                          label="Meta Mensal"
-                          prefix="R$"
-                          value={formData.monthly_goal}
-                          onChange={(val) => updateForm({ monthly_goal: val })}
-                          tooltip="Quanto quer lucrar por mês com este produto."
                         />
                       </div>
                     </div>
@@ -903,6 +1092,86 @@ export default function App() {
               <AnimatePresence>
                 {showResult && formData.cost > 0 && (
                   <ResultCard result={result} onSave={handleSave} saving={saving} />
+                )}
+              </AnimatePresence>
+
+              {/* ═══ PROJEÇÃO DE ESCALA (METAS) ═══ */}
+              <AnimatePresence>
+                {showResult && result.net_profit > 0 && result.feedback.verdict !== 'impossible' && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 20 }}
+                    transition={{ delay: 0.2 }}
+                    className="space-y-4"
+                  >
+                    <div className="bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50 rounded-3xl p-5 border-2 border-green-200 shadow-sm space-y-4">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 bg-green-500 rounded-2xl flex items-center justify-center shadow-lg shadow-green-500/20">
+                          <Rocket className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-base font-black text-green-800">Projeção de Escala</h3>
+                          <p className="text-[9px] text-green-700/60 font-medium uppercase tracking-wider">Metas Mensais</p>
+                        </div>
+                      </div>
+
+                      <InputField
+                        label="Meta de Lucro Líquido Mensal"
+                        prefix="R$"
+                        icon={Target}
+                        value={formData.monthly_goal || ''}
+                        onChange={(val) => updateForm({ monthly_goal: val })}
+                        tooltip="Quanto você quer colocar no bolso por mês com este produto."
+                        placeholder="3000"
+                      />
+
+                      {(() => {
+                        const goal = formData.monthly_goal || 0;
+                        if (goal <= 0 || result.net_profit <= 0) return null;
+                        const unitsPerMonth = Math.ceil(goal / result.net_profit);
+                        const salesPerDay = (unitsPerMonth / 30).toFixed(1);
+                        const salesPerDayLow = Math.floor(unitsPerMonth / 30);
+                        const salesPerDayHigh = Math.ceil(unitsPerMonth / 30);
+                        const grossRevenue = unitsPerMonth * result.final_price;
+                        const capitalNeeded = unitsPerMonth * (result.cost + result.packaging_cost);
+
+                        return (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-2 gap-2.5">
+                              <div className="bg-white/80 p-3.5 rounded-2xl">
+                                <p className="text-[9px] font-bold uppercase tracking-widest text-green-700/50">Un./Mês</p>
+                                <p className="text-xl font-black text-green-800 mt-0.5">{unitsPerMonth}</p>
+                              </div>
+                              <div className="bg-white/80 p-3.5 rounded-2xl">
+                                <p className="text-[9px] font-bold uppercase tracking-widest text-green-700/50">Vendas/Dia</p>
+                                <p className="text-xl font-black text-green-800 mt-0.5">{salesPerDay}</p>
+                              </div>
+                              <div className="bg-white/80 p-3.5 rounded-2xl">
+                                <p className="text-[9px] font-bold uppercase tracking-widest text-green-700/50">Faturamento</p>
+                                <p className="text-lg font-black text-green-800 mt-0.5">R$ {fmt(grossRevenue)}</p>
+                              </div>
+                              <div className="bg-white/80 p-3.5 rounded-2xl">
+                                <p className="text-[9px] font-bold uppercase tracking-widest text-green-700/50">Capital de Giro</p>
+                                <p className="text-lg font-black text-green-800 mt-0.5">R$ {fmt(capitalNeeded)}</p>
+                              </div>
+                            </div>
+
+                            <div className="bg-white/60 rounded-2xl p-4">
+                              <p className="text-xs text-green-900 leading-relaxed font-medium">
+                                Para colocar <span className="font-black">R$ {fmt(goal)}</span> limpos no bolso com este produto, você precisa vender{' '}
+                                <span className="font-black">{unitsPerMonth} unidades por mês</span>{' '}
+                                (cerca de <span className="font-black">{salesPerDayLow} a {salesPerDayHigh} vendas por dia</span>).
+                                Isso exigirá um capital de giro de{' '}
+                                <span className="font-black">R$ {fmt(capitalNeeded)}</span> para bancar o estoque e gerará um faturamento bruto de{' '}
+                                <span className="font-black">R$ {fmt(grossRevenue)}</span>.
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </motion.div>
                 )}
               </AnimatePresence>
             </motion.div>
@@ -957,7 +1226,7 @@ export default function App() {
                       <div className="space-y-2">
                         <AnimatePresence>
                           {worthIt.map(p => (
-                            <ProductItem key={p.id} product={p} onDelete={handleDelete} />
+                            <ProductItem key={p.id} product={p} onDelete={handleDelete} onOpen={setSelectedProduct} />
                           ))}
                         </AnimatePresence>
                       </div>
@@ -976,7 +1245,7 @@ export default function App() {
                       <div className="space-y-2">
                         <AnimatePresence>
                           {notWorth.map(p => (
-                            <ProductItem key={p.id} product={p} onDelete={handleDelete} />
+                            <ProductItem key={p.id} product={p} onDelete={handleDelete} onOpen={setSelectedProduct} />
                           ))}
                         </AnimatePresence>
                       </div>
@@ -991,6 +1260,13 @@ export default function App() {
           {activeTab === 'guide' && <GuideTab />}
         </AnimatePresence>
       </main>
+
+      {/* Product Detail Modal */}
+      <AnimatePresence>
+        {selectedProduct && (
+          <ProductDetailModal product={selectedProduct} onClose={() => setSelectedProduct(null)} />
+        )}
+      </AnimatePresence>
 
       {/* Navigation */}
       <nav className="fixed bottom-0 left-0 w-full flex justify-around items-center px-4 pb-6 pt-3 bg-white/90 backdrop-blur-2xl z-50 rounded-t-3xl shadow-[0_-8px_30px_-10px_rgba(0,0,0,0.08)] border-t border-slate-200/50">

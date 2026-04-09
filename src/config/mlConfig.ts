@@ -77,9 +77,25 @@ export const ML_CONFIG = {
     { maxWeight: 30.0, range79: 8.00,  range99: 8.00,  range199: 201.95 },
   ],
 
+  // Regimes Tributários
+  TAX_REGIMES: {
+    CPF_MEI: {
+      label: 'CPF / MEI',
+      rate: 0,
+      description: 'Sem imposto sobre venda. Para pessoa física ou MEI.',
+      editable: false,
+    },
+    SIMPLES: {
+      label: 'ME (Simples Nacional)',
+      rate: 0.06,
+      description: 'Alíquota variável. Digite sua faixa do Simples.',
+      editable: true,
+    },
+  },
+
   // Valores padrão
   DEFAULTS: {
-    TAX_RATE: 0.065,       // 6.5% Simples Nacional
+    TAX_RATE: 0.06,        // 6% Simples Nacional (padrão)
     PACKAGING_COST: 3.00,  // R$ 3,00
     MARGIN_TARGET: 0.20,   // 20%
     ADS_RATE: 0,           // 0% (sem Mercado Ads)
@@ -88,6 +104,7 @@ export const ML_CONFIG = {
 
 export type AdTypeKey = keyof typeof ML_CONFIG.AD_TYPES;
 export type ShippingMethod = 'COLETA' | 'FULL';
+export type TaxRegime = 'CPF_MEI' | 'SIMPLES';
 
 /**
  * Retorna o custo de frete que o VENDEDOR paga

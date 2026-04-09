@@ -20,6 +20,7 @@ export interface ProductRow {
   shipping_method: string;
   packaging_cost: number;
   tax_rate: number;
+  tax_regime: string;
   ads_rate: number;
   margin_target: number;
   competitor_price: number;
