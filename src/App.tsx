@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Calculator,
   Save,
@@ -47,6 +47,8 @@ import {
   type ProductRow,
 } from './lib/supabase';
 import AuthScreen from './components/AuthScreen';
+import { fetchAIVerdict, type AIVerdictResult, type AIVerdictPayload } from './lib/aiService';
+import { AIVerdictCard, AIVerdictSkeleton } from './components/AIVerdictCard';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -631,6 +633,11 @@ export default function App() {
   const [calcMode, setCalcMode] = useState<'suggestion' | 'simulation'>('suggestion');
   const [selectedProduct, setSelectedProduct] = useState<SavedProduct | null>(null);
 
+  // AI Verdict state
+  const [aiVerdict, setAiVerdict] = useState<AIVerdictResult | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const aiAbortRef = useRef<AbortController | null>(null);
+
   // Default form state
   const defaultForm: PricingInput = {
     name: '',
@@ -730,7 +737,44 @@ export default function App() {
     setFormData(defaultForm);
     setShowResult(false);
     setCalcMode('suggestion');
+    setAiVerdict(null);
+    setAiLoading(false);
   }, []);
+
+  // Trigger AI verdict call
+  const triggerAIVerdict = useCallback(async (currentResult: PricingResult) => {
+    setAiVerdict(null);
+    setAiLoading(true);
+
+    const payload: AIVerdictPayload = {
+      name: formData.name,
+      cost: formData.cost,
+      packaging_cost: formData.packaging_cost,
+      final_price: currentResult.final_price,
+      liquido_ml: currentResult.liquido_ml,
+      net_profit: currentResult.net_profit,
+      margin_percentage: currentResult.margin_percentage,
+      margin_target: formData.margin_target,
+      roi: currentResult.roi,
+      commission_rate: currentResult.commission_rate,
+      commission_amount: currentResult.commission_amount,
+      shipping_cost: currentResult.shipping_cost,
+      fixed_fee: currentResult.fixed_fee,
+      tax_amount: currentResult.tax_amount,
+      ads_amount: currentResult.ads_amount,
+      total_deductions: currentResult.total_deductions,
+      competitor_price: formData.competitor_price,
+      mode: currentResult.mode,
+      tax_regime: formData.tax_regime,
+      weight: formData.weight,
+      break_even_price: currentResult.break_even_price,
+      units_to_goal: currentResult.units_to_goal,
+    };
+
+    const aiResult = await fetchAIVerdict(payload);
+    setAiVerdict(aiResult); // null = fallback silencioso
+    setAiLoading(false);
+  }, [formData]);
 
   // Delete product from Supabase
   const handleDelete = useCallback(async (id: string) => {
@@ -1092,7 +1136,10 @@ export default function App() {
 
               {/* Calculate Button */}
               <button
-                onClick={() => setShowResult(true)}
+                onClick={() => {
+                  setShowResult(true);
+                  triggerAIVerdict(result);
+                }}
                 disabled={formData.cost <= 0}
                 className="w-full bg-secondary text-on-surface py-4 rounded-2xl font-black text-lg shadow-xl shadow-secondary/25 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-3 disabled:opacity-40 disabled:cursor-not-allowed"
               >
@@ -1104,6 +1151,18 @@ export default function App() {
               <AnimatePresence>
                 {showResult && formData.cost > 0 && (
                   <ResultCard result={result} onSave={handleSave} saving={saving} />
+                )}
+              </AnimatePresence>
+
+              {/* AI Verdict */}
+              <AnimatePresence>
+                {showResult && formData.cost > 0 && aiLoading && (
+                  <AIVerdictSkeleton />
+                )}
+              </AnimatePresence>
+              <AnimatePresence>
+                {showResult && formData.cost > 0 && !aiLoading && aiVerdict && (
+                  <AIVerdictCard verdict={aiVerdict} />
                 )}
               </AnimatePresence>
 
