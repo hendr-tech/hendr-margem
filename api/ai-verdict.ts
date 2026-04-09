@@ -1,10 +1,9 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+// Vercel Serverless Function — AI Verdict via Gemini
+// No external dependencies required (uses native Node.js types)
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MODEL = 'gemini-2.0-flash';
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_API_KEY}`;
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -18,9 +17,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Read API key at runtime (not module level)
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
   if (!GEMINI_API_KEY) {
+    console.error('GEMINI_API_KEY is missing from environment variables');
     return res.status(500).json({ error: 'GEMINI_API_KEY not configured' });
   }
+
+  const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_API_KEY}`;
 
   try {
     const data = req.body;
@@ -43,7 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!response.ok) {
       const err = await response.json();
-      console.error('Gemini API error:', err);
+      console.error('Gemini API error:', JSON.stringify(err));
       return res.status(502).json({ error: 'AI API error', detail: err?.error?.message });
     }
 
@@ -64,8 +69,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
   } catch (error: any) {
-    console.error('AI verdict error:', error);
-    return res.status(500).json({ error: 'Internal error', detail: error.message });
+    console.error('AI verdict error:', error?.message || error);
+    return res.status(500).json({ error: 'Internal error', detail: error?.message });
   }
 }
 
