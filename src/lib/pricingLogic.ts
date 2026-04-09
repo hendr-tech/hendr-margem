@@ -224,7 +224,11 @@ export const calculatePricing = (input: PricingInput): PricingResult => {
   const price_diff = competitor_price > 0 ? ((final_price - competitor_price) / competitor_price) * 100 : 0;
 
   if (competitor_price > 0) {
-    if (final_price <= competitor_price * 0.95) {
+    // Caso crítico: concorrente vende por MENOS que seu custo
+    if (competitor_price <= cost) {
+      status = 'danger';
+      suggestion = `🚨 ALERTA CRÍTICO: O concorrente vende a R$ ${fmt(competitor_price)}, que é MENOR que seu custo de R$ ${fmt(cost)}. É praticamente impossível competir nesse preço. Você precisa de um fornecedor com custo abaixo de R$ ${fmt(competitor_price * 0.5)} para ter chance, ou buscar um diferencial que justifique o preço maior (kit, brindes, garantia estendida).`;
+    } else if (final_price <= competitor_price * 0.95) {
       status = 'excellent';
       suggestion = 'Preço excelente! Você tem margem competitiva para dominar esse nicho.';
     } else if (final_price <= competitor_price * 1.05) {
@@ -235,7 +239,7 @@ export const calculatePricing = (input: PricingInput): PricingResult => {
       suggestion = 'Preço um pouco acima. Considere negociar com fornecedor ou reduzir margem.';
     } else {
       status = 'danger';
-      suggestion = 'Preço pouco competitivo. Revise custos ou considere outro fornecedor.';
+      suggestion = `Preço ${((final_price / competitor_price - 1) * 100).toFixed(0)}% acima do concorrente. Muito difícil vender nesse valor. Revise custos ou considere outro fornecedor.`;
     }
   }
 

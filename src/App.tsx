@@ -141,7 +141,10 @@ const ResultCard = ({ result, onSave, saving }: { result: PricingResult; onSave:
               <p className="text-xl font-black text-on-surface mt-0.5">R$ {fmt(result.final_price)}</p>
             </div>
             <div className="bg-white/70 p-3.5 rounded-2xl">
-              <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60">Você Recebe (Líquido)</p>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60 flex items-center gap-0.5">
+                Você Recebe (Líquido)
+                <Tooltip text="É o valor que cai na sua conta do Mercado Pago. Já descontou comissão, frete e taxa fixa do ML. Mas AINDA NÃO descontou o custo do produto, impostos e embalagem." />
+              </p>
               <p className="text-xl font-black text-secondary-dark mt-0.5">R$ {fmt(result.liquido_ml)}</p>
             </div>
           </div>
@@ -151,19 +154,28 @@ const ResultCard = ({ result, onSave, saving }: { result: PricingResult; onSave:
       {/* Key Metrics */}
       <div className="grid grid-cols-3 gap-2.5">
         <div className="bg-surface-container-lowest p-3.5 rounded-2xl shadow-sm border border-slate-100">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60">Lucro Real</p>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60 flex items-center gap-0.5">
+            Lucro Real
+            <Tooltip text="É o dinheiro que SOBRA no seu bolso. Líquido ML menos custo do produto, impostos, embalagem e ads. É o valor mais importante." />
+          </p>
           <p className={`text-lg font-black mt-0.5 ${isProfit ? 'text-green-600' : 'text-red-500'}`}>
             R$ {fmt(result.net_profit)}
           </p>
         </div>
         <div className="bg-surface-container-lowest p-3.5 rounded-2xl shadow-sm border border-slate-100">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60">Margem</p>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60 flex items-center gap-0.5">
+            Margem
+            <Tooltip text="Percentual do preço de venda que é lucro. Ex: Margem 20% = a cada R$ 100 vendidos, R$ 20 é lucro." />
+          </p>
           <p className={`text-lg font-black mt-0.5 ${isProfit ? 'text-green-600' : 'text-red-500'}`}>
             {result.margin_percentage.toFixed(1)}%
           </p>
         </div>
         <div className="bg-surface-container-lowest p-3.5 rounded-2xl shadow-sm border border-slate-100">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60">ROI</p>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60 flex items-center gap-0.5">
+            ROI
+            <Tooltip text="Retorno sobre o Investimento. Quanto % você ganha em cima do que investiu (custo + embalagem). ROI 30% = a cada R$ 100 investidos, lucra R$ 30." />
+          </p>
           <p className={`text-lg font-black mt-0.5 ${isProfit ? 'text-green-600' : 'text-red-500'}`}>
             {result.roi.toFixed(1)}%
           </p>
