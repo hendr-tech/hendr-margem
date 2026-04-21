@@ -62,9 +62,14 @@ export interface PricingResult {
  * Preço_de_Venda_Sugerido = Custos_Absolutos / Divisor
  * 
  * VERIFICAÇÃO CRÍTICA DA BARREIRA R$ 79:
- * - Se preço < R$ 79: comprador paga frete, vendedor paga R$ 6 taxa fixa
+ * - Se preço < R$ 79: comprador paga frete, vendedor paga R$ 6,25 taxa fixa
  * - Se preço ≥ R$ 79: vendedor paga frete, sem taxa fixa
  * - O preço sugerido pode "cruzar" essa barreira, exigindo recálculo
+ * 
+ * LOOP DE PRECIFICAÇÃO (Convergência):
+ * O custo do frete depende da faixa de preço, que por sua vez depende do frete.
+ * Utilizamos iteração até que o preço convirja (diferença < R$ 0,01),
+ * garantindo que o preço final absorva o custo correto de frete da sua faixa.
  * 
  * MODO SUGESTÃO: Calcula o preço ideal dado um custo e margem desejada
  * MODO SIMULAÇÃO: Dado um preço de venda, calcula o lucro real
@@ -110,25 +115,34 @@ export const calculatePricing = (input: PricingInput): PricingResult => {
       // 
       // Estratégia: calcular duas versões do preço e escolher a correta.
       //
-      // Cenário A: Preço abaixo de R$ 79 (sem frete, com taxa fixa R$ 6)
+      // Cenário A: Preço abaixo de R$ 79 (sem frete, com taxa fixa R$ 6,25)
       // Cenário B: Preço acima de R$ 79 (com frete por peso, sem taxa fixa)
       //
       // Depois verificar qual cenário é consistente.
 
       // Cenário A: Preço < R$ 79 (comprador paga frete, vendedor paga taxa fixa)
-      const custos_abaixo = cost + packaging_cost + ML_CONFIG.FIXED_FEE_AMOUNT; // +R$6 taxa fixa, sem frete
+      const custos_abaixo = cost + packaging_cost + ML_CONFIG.FIXED_FEE_AMOUNT; // +R$6,25 taxa fixa, sem frete
       const preco_abaixo = custos_abaixo / divisor;
 
-      // Cenário B: Preço ≥ R$ 79 (vendedor paga frete, sem taxa fixa)
-      // Requer iteração porque frete depende da faixa de preço
+      // ─── CENÁRIO B: PREÇO ≥ R$ 79 COM LOOP DE CONVERGÊNCIA ─────
+      // 
+      // O frete depende da faixa de preço, e a faixa de preço depende
+      // do frete. Iteramos até convergir:
+      //   1. Estimar preço sem frete
+      //   2. Buscar frete para essa faixa de preço
+      //   3. Recalcular preço com o frete encontrado
+      //   4. Repetir até estabilizar (|preço_n - preço_n-1| < 0.01)
+      //
+      // Máximo de 20 iterações como safety net (converge em ~3-5).
       let preco_acima = (cost + packaging_cost) / divisor; // Estimativa inicial sem frete
       let prevPrice = 0;
 
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 20; i++) {
         const shipping = getShippingCost(weight, preco_acima, shipping_method);
         const custos_acima = cost + packaging_cost + shipping; // sem taxa fixa, com frete
         preco_acima = custos_acima / divisor;
 
+        // Convergiu — o preço não muda mais e o frete está correto para a faixa
         if (Math.abs(preco_acima - prevPrice) < 0.01) break;
         prevPrice = preco_acima;
       }
@@ -147,9 +161,19 @@ export const calculatePricing = (input: PricingInput): PricingResult => {
         // Neste caso, usar o cenário B (acima de R$ 79) pois é mais vantajoso
         // para o comprador (frete grátis = mais vendas).
         final_price = Math.max(preco_acima, ML_CONFIG.FIXED_FEE_THRESHOLD);
-        // Recalcular com frete real para este preço
-        const finalShipping = getShippingCost(weight, final_price, shipping_method);
-        final_price = (cost + packaging_cost + finalShipping) / divisor;
+
+        // Recalcular com loop de convergência para este preço forçado acima de R$ 79
+        for (let i = 0; i < 20; i++) {
+          const finalShipping = getShippingCost(weight, final_price, shipping_method);
+          const newPrice = (cost + packaging_cost + finalShipping) / divisor;
+          if (Math.abs(newPrice - final_price) < 0.01) {
+            final_price = newPrice;
+            break;
+          }
+          final_price = newPrice;
+        }
+        // Garantir que não caiu abaixo de R$ 79
+        final_price = Math.max(final_price, ML_CONFIG.FIXED_FEE_THRESHOLD);
       }
     }
   }
@@ -184,15 +208,20 @@ export const calculatePricing = (input: PricingInput): PricingResult => {
   const roi = (cost + packaging_cost) > 0 ? (net_profit / (cost + packaging_cost)) * 100 : 0;
   const units_to_goal = net_profit > 0 ? Math.ceil(monthly_goal / net_profit) : 0;
 
-  // Ponto de equilíbrio (margem = 0, ads = 0)
+  // Ponto de equilíbrio (margem = 0, ads = 0) com loop de convergência
   const be_divisor = 1 - commission_rate - effective_tax_rate;
   let break_even_price = 0;
   if (be_divisor > 0) {
     break_even_price = (cost + packaging_cost) / be_divisor;
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 20; i++) {
       const beShipping = getShippingCost(weight, break_even_price, shipping_method);
       const beFee = break_even_price < ML_CONFIG.FIXED_FEE_THRESHOLD ? ML_CONFIG.FIXED_FEE_AMOUNT : 0;
-      break_even_price = (cost + beShipping + beFee + packaging_cost) / be_divisor;
+      const newBE = (cost + beShipping + beFee + packaging_cost) / be_divisor;
+      if (Math.abs(newBE - break_even_price) < 0.01) {
+        break_even_price = newBE;
+        break;
+      }
+      break_even_price = newBE;
     }
   }
 

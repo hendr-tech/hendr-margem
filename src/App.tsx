@@ -34,7 +34,7 @@ import {
   Rocket,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ML_CONFIG, AdTypeKey, ShippingMethod, TaxRegime } from './config/mlConfig';
+import { ML_CONFIG, WEIGHT_TIERS, AdTypeKey, ShippingMethod, TaxRegime } from './config/mlConfig';
 import { calculatePricing, PricingInput, PricingResult } from './lib/pricingLogic';
 import {
   supabase,
@@ -542,7 +542,7 @@ const GuideTab = () => (
         <h3 className="text-base font-black text-on-surface">Taxas do Mercado Livre</h3>
       </div>
       <div className="space-y-3 text-xs text-on-surface-variant leading-relaxed">
-        <InfoBlock title="Taxa Fixa (R$ 6,00)" desc="Cobrada em TODOS os produtos com preço abaixo de R$ 79,00. Acima de R$ 79, não há taxa fixa." />
+        <InfoBlock title="Taxa Fixa (R$ 6,25)" desc="Cobrada em TODOS os produtos com preço abaixo de R$ 79,00. Acima de R$ 79, não há taxa fixa." />
         <InfoBlock title="Frete (Mercado Envios)" desc="Para produtos ≥ R$ 79, é obrigatório oferecer frete grátis. O vendedor paga o custo de envio ao ML. O custo varia por peso e faixa de preço do produto." />
         <InfoBlock title="Comissão" desc="Percentual cobrado sobre o preço de venda. Clássico: 11%. Premium: 16%." />
         <InfoBlock title='O que é "Líquido ML"?' desc="É o valor que cai na sua conta do Mercado Pago após todas as deduções do ML (comissão + frete + taxa fixa). Ainda não é seu lucro — falta descontar o custo do produto, impostos e embalagem." />
@@ -562,9 +562,10 @@ const GuideTab = () => (
           <thead>
             <tr className="text-on-surface-variant/60 font-bold uppercase">
               <th className="text-left py-2 px-2">Peso</th>
-              <th className="text-right py-2 px-2">R$79-99</th>
-              <th className="text-right py-2 px-2">R$99-199</th>
-              <th className="text-right py-2 px-2">R$199+</th>
+              <th className="text-right py-2 px-2">R$79-119</th>
+              <th className="text-right py-2 px-2">R$120-149</th>
+              <th className="text-right py-2 px-2">R$150-199</th>
+              <th className="text-right py-2 px-2">R$200+</th>
             </tr>
           </thead>
           <tbody className="text-on-surface font-medium">
@@ -572,14 +573,15 @@ const GuideTab = () => (
               <tr key={i} className={i % 2 === 0 ? 'bg-slate-50' : ''}>
                 <td className="py-1.5 px-2">{tier.maxWeight}kg</td>
                 <td className="text-right py-1.5 px-2">R$ {fmt(tier.range79)}</td>
-                <td className="text-right py-1.5 px-2">R$ {fmt(tier.range99)}</td>
-                <td className="text-right py-1.5 px-2">R$ {fmt(tier.range199)}</td>
+                <td className="text-right py-1.5 px-2">R$ {fmt(tier.range120)}</td>
+                <td className="text-right py-1.5 px-2">R$ {fmt(tier.range150)}</td>
+                <td className="text-right py-1.5 px-2">R$ {fmt(tier.range200)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="text-[9px] text-on-surface-variant/40">Para produtos abaixo de R$ 79: comprador paga o frete, vendedor paga R$ 0 de envio + R$ 6 de taxa fixa.</p>
+      <p className="text-[9px] text-on-surface-variant/40">Para produtos abaixo de R$ 79: comprador paga o frete, vendedor paga R$ 0 de envio + R$ 6,25 de taxa fixa.</p>
     </div>
 
     {/* Tips */}
@@ -912,32 +914,27 @@ export default function App() {
                     tooltip="Quanto você paga pelo produto."
                     placeholder="0,00"
                   />
-                  <InputField
-                    label="Peso c/ embalagem"
-                    suffix="kg"
-                    icon={Weight}
-                    value={formData.weight || ''}
-                    onChange={(val) => updateForm({ weight: val })}
-                    tooltip="Peso total: produto + caixa + proteção."
-                    placeholder="0.5"
-                  />
-                </div>
 
-                {/* Quick weight buttons */}
-                <div className="flex gap-1.5 flex-wrap">
-                  {[0.3, 0.5, 1, 2, 3, 5].map(w => (
-                    <button
-                      key={w}
-                      onClick={() => updateForm({ weight: w })}
-                      className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all ${
-                        formData.weight === w
-                          ? 'bg-secondary text-on-surface'
-                          : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
-                      }`}
+                  {/* Peso do Produto — Dropdown Oficial ML */}
+                  <div className="space-y-1.5">
+                    <label className="flex items-center text-[10px] font-bold uppercase tracking-[0.15em] text-on-surface-variant/60 px-1">
+                      <Weight className="w-3 h-3 mr-1.5 text-secondary-dark" />
+                      Peso do Produto embalado
+                      <Tooltip text="Peso total com embalagem. Selecione a faixa oficial do Mercado Livre que corresponde ao seu produto." />
+                    </label>
+                    <select
+                      value={formData.weight}
+                      onChange={(e) => updateForm({ weight: parseFloat(e.target.value) })}
+                      className="w-full bg-surface-container-high/60 border border-transparent rounded-2xl py-3.5 px-4 text-base font-bold text-on-surface focus:ring-2 focus:ring-secondary focus:border-secondary focus:bg-white transition-all outline-none appearance-none cursor-pointer"
+                      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center' }}
                     >
-                      {w}kg
-                    </button>
-                  ))}
+                      {WEIGHT_TIERS.map(tier => (
+                        <option key={tier.value} value={tier.value}>
+                          {tier.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
